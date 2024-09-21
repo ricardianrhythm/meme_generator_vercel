@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Big Red Button Meme Generator</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+</head>
+<body>
+    <h1>Big Red Button Meme Generator</h1>
+    
+    <select id="location-select">
+        {% for location in locations %}
+        <option value="{{ location }}">{{ location }}</option>
+        {% endfor %}
+        <option value="Other">Other (specify below)</option>
+    </select>
+    
+    <input type="text" id="custom-location" placeholder="Enter custom location" style="display:none;">
+    
+    <input type="text" id="thought" placeholder="Enter your thought">
+    
+    <button onclick="generateMeme()">Generate Meme</button>
+    
+    <div id="meme-result"></div>
+    
+    <h2>Previous Memes</h2>
+    <div id="previous-memes"></div>
+
+    <script>
+        document.getElementById('location-select').addEventListener('change', function() {
+            var customLocation = document.getElementById('custom-location');
+            customLocation.style.display = this.value === 'Other' ? 'block' : 'none';
+        });
+
+        function generateMeme() {
+            var location = document.getElementById('location-select').value;
+            if (location === 'Other') {
+                location = document.getElementById('custom-location').value;
+            }
+            var thought = document.getElementById('thought').value;
+
+            axios.post('/generate_meme', {
+                location: location,
+                thought: thought
+            })
+            .then(function (response) {
+                document.getElementById('meme-result').innerHTML = response.data.meme_html;
+            })
+            .catch(function (error) {
+                console.error('Error:', error);
+            });
+        }
+
+        function loadPreviousMemes() {
+            axios.get('/get_previous_memes')
+            .then(function (response) {
+                var memeGallery = response.data;
+                var html = '';
+                for (var i = 0; i < memeGallery.length; i++) {
+                    html += `<img src="${memeGallery[i][0]}" alt="Meme" style="max-width: 100%;">`;
+                    html += `<p>${memeGallery[i][1]}</p>`;
+                }
+                document.getElementById('previous-memes').innerHTML = html;
+            })
+            .catch(function (error) {
+                console.error('Error:', error);
+            });
+        }
+
+        loadPreviousMemes();
+    </script>
+</body>
+</html>
