@@ -49,8 +49,13 @@ def call_openai_api(data):
 
 def collect_user_ip():
     try:
-        return request.remote_addr
-    except:
+        # Make a request to the ipify API to get the public IP address
+        response = requests.get('https://api.ipify.org?format=json')
+        response.raise_for_status()  # Raise an error if the request was unsuccessful
+        ip_address = response.json().get('ip')
+        return ip_address if ip_address else "Unknown IP"
+    except Exception as e:
+        logger.error(f"Error fetching IP address: {str(e)}")
         return "Unknown IP"
 
 def get_meme_list():
@@ -206,7 +211,7 @@ def get_locations_from_firebase():
     try:
         locations = db.collection('locations').order_by('label').get()
         location_labels = [location.to_dict().get('label', 'Unknown Location') for location in locations]
-        return location_labels + ["Other (specify below)"]
+        return location_labels
     except Exception as e:
         st.error(f"Error fetching locations from Firebase: {str(e)}")
         return ["Other (specify below)"]
@@ -218,50 +223,18 @@ def create_meme(location, thought):
     used_thought = thought.strip()
     used_label = location.strip()
 
-    if location == "Other (specify below)":
-        return "Please enter a custom location.", None, get_memes_from_firebase()
-
-
-def create_meme(location, thought):
-    if not thought.strip():
-        return "Please enter your thought.", None, get_memes_from_firebase()
-
-    used_thought = thought.strip()
-    used_label = location.strip()
-
     if not used_label:
         return "Please enter a location.", None, get_memes_from_firebase()
 
-    # Add new location to Firebase if it's not already in the list
-    existing_locations = get_locations_from_firebase()
-    if used_label not in existing_locations:
-        try:
-            db.collection('locations').add({
-                'label': used_label,
-                'ip_address': ""
-            })
-            st.success(f"Added new location: {used_label}")
-        except Exception as e:
-            st.error(f"Error adding new location to Firebase: {str(e)}")
-
-    # Collect IP address
-    ip_address = collect_user_ip()
-
-    # Generate the meme
+    # Check if the meme already exists
+    existing_memes = db.collection('memes').where('thought', '==', used_thought).where('location', '==', used_label).get()
+    if existing_memes:
+        return "Meme already exists.", None, get_memes_from_firebase()
+    
+    # Generate the meme and store in Firebase
     meme_url, meme_id, doc_id, error = generate_meme(used_thought, used_label)
     if error:
         return error, None, get_memes_from_firebase()
-
-    # Update location with IP address
-    try:
-        location_query = db.collection('locations').where('label', '==', used_label).limit(1).get()
-        if location_query:
-            location_doc_id = location_query[0].id
-            db.collection('locations').document(location_doc_id).update({
-                'ip_address': ip_address
-            })
-    except Exception as e:
-        st.error(f"Error updating location with IP address: {str(e)}")
 
     # Store meme details with IP address
     try:
@@ -269,7 +242,7 @@ def create_meme(location, thought):
             'thought': used_thought,
             'location': used_label,
             'meme_url': meme_url,
-            'ip_address': ip_address,
+            'ip_address': collect_user_ip(),
             'timestamp': firestore.SERVER_TIMESTAMP
         })
     except Exception as e:
@@ -291,9 +264,7 @@ def index():
 
     # Fetch locations from Firebase
     locations = get_locations_from_firebase()
-    return render_template('index.html', locations=locations)
-
-    # Ensure "Other (specify below)" is always the last option
+  
     if "Other (specify below)" in locations:
         locations.remove("Other (specify below)")
     locations.append("Other (specify below)")

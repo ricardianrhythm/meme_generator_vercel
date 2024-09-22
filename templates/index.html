@@ -34,12 +34,19 @@
         });
 
         function generateMeme() {
-            var location = document.getElementById('location-select').value;
+            let location = document.getElementById('location-select').value;
             if (location === 'Other') {
-                location = document.getElementById('custom-location').value;
+                location = document.getElementById('custom-location').value.trim(); // Use custom location if selected
             }
-            var thought = document.getElementById('thought').value;
+            let thought = document.getElementById('thought').value.trim(); // Trim to remove extra spaces
 
+            // Check if custom location and thought are provided
+            if (!location || !thought) {
+                alert("Please enter both a location and a thought.");
+                return;
+            }
+
+            // Make API request to generate meme
             axios.post('/generate_meme', {
                 location: location,
                 thought: thought
@@ -49,6 +56,7 @@
             })
             .catch(function (error) {
                 console.error('Error:', error);
+                alert("Error generating meme. Please try again.");
             });
         }
 
