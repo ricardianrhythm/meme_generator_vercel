@@ -72,7 +72,8 @@ def collect_user_ip_and_location():
             'city': 'Unknown City',
             'region': 'Unknown Region',
             'country': 'Unknown Country'
-
+        }
+        
 def get_meme_list():
     try:
         response = requests.get("https://api.imgflip.com/get_memes")
