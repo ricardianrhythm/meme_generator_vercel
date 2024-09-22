@@ -76,6 +76,34 @@ def collect_user_ip_and_location():
             'region': 'Unknown Region',
             'country': 'Unknown Country'
         }
+def upsert_location(location_label, city, region, country):
+    try:
+        # Check if the location document already exists
+        location_query = db.collection('locations').where('label', '==', location_label).limit(1).get()
+        
+        if location_query:
+            # Document exists, update it
+            location_ref = location_query[0].reference
+            location_ref.update({
+                'city': city,
+                'region': region,
+                'country': country,
+                'updated_at': firestore.SERVER_TIMESTAMP
+            })
+            logger.debug(f"Location '{location_label}' updated successfully.")
+        else:
+            # Document does not exist, create it
+            db.collection('locations').add({
+                'label': location_label,
+                'city': city,
+                'region': region,
+                'country': country,
+                'created_at': firestore.SERVER_TIMESTAMP
+            })
+            logger.debug(f"Location '{location_label}' created successfully.")
+    except Exception as e:
+        logger.error(f"Error upserting location: {str(e)}")
+        
 def get_meme_list():
     try:
         response = requests.get("https://api.imgflip.com/get_memes")
@@ -89,9 +117,17 @@ def get_meme_list():
 
 def generate_meme(thought, location_label, meme_id=None, previous_doc_id=None, excluded_memes=None):
     try:
-        meme_list = get_meme_list()
+        # Collect user IP and location data
+        user_data = collect_user_ip_and_location()
+        city = user_data['city']
+        region = user_data['region']
+        country = user_data['country']
         
-        # Filter out excluded memes
+        # Upsert location document in Firestore
+        upsert_location(location_label, city, region, country)
+        
+        # Fetch available memes and exclude previously generated ones
+        meme_list = get_meme_list()
         if excluded_memes:
             meme_list = [meme for meme in meme_list if meme['id'] not in excluded_memes]
         if not meme_list:
