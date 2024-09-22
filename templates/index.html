@@ -32,60 +32,6 @@
     <script>
         let excludedMemes = [];
 
-        // Function to get location data from localStorage if it exists
-        function getLocationData() {
-            // Check if location data is already stored in localStorage
-            const locationData = localStorage.getItem('locationData');
-            if (locationData) {
-                return JSON.parse(locationData);
-            }
-            return null;
-        }
-
-        // Function to save location data in localStorage
-        function saveLocationData(data) {
-            localStorage.setItem('locationData', JSON.stringify(data));
-        }
-
-        // Function to fetch location data from ipapi.co or another API
-        async function fetchLocationData() {
-            try {
-                const response = await axios.get('https://ipapi.co/json/');  // Replace with your IP API endpoint if needed
-                const data = {
-                    ip: response.data.ip,
-                    city: response.data.city,
-                    region: response.data.region,
-                    country: response.data.country_name
-                };
-                saveLocationData(data);  // Save location data to localStorage
-                return data;
-            } catch (error) {
-                console.error('Error fetching location data:', error);
-                return {
-                    ip: 'Unknown IP',
-                    city: 'Unknown City',
-                    region: 'Unknown Region',
-                    country: 'Unknown Country'
-                };
-            }
-        }
-
-        // Function to initialize location data
-        async function initializeLocationData() {
-            let locationData = getLocationData();  // Check if data is already in localStorage
-            if (!locationData) {
-                locationData = await fetchLocationData();  // Fetch data if not in localStorage
-            }
-            console.log('Location Data:', locationData);
-            return locationData;
-        }
-
-        // Call initializeLocationData on page load
-        window.onload = async function() {
-            const locationData = await initializeLocationData();
-            // You can use locationData here or save it to a global variable if needed
-        };
-
         // Event listener for location select dropdown
         document.getElementById('location-select').addEventListener('change', function() {
             var customLocation = document.getElementById('custom-location');
@@ -96,32 +42,26 @@
         async function generateMeme() {
             let location = document.getElementById('location-select').value;
             if (location === 'Other (specify below)') {
-                location = document.getElementById('custom-location').value.trim(); // Use custom location if selected
+                location = document.getElementById('custom-location').value.trim();
             }
-            let thought = document.getElementById('thought').value.trim(); // Trim to remove extra spaces
+            let thought = document.getElementById('thought').value.trim();
 
-            // Check if custom location and thought are provided
             if (!location || !thought) {
                 alert("Please enter both a location and a thought.");
                 return;
             }
 
-            // Fetch location data from localStorage if available
-            const locationData = getLocationData();
-            console.log('Using Cached Location Data:', locationData);
-
             // Make API request to generate meme
             axios.post('/generate_meme', {
                 location: location,
                 thought: thought,
-                excluded_memes: excludedMemes, // Pass excluded memes
-                user_location_data: locationData // Pass cached location data to the server if needed
+                excluded_memes: excludedMemes
             })
             .then(function (response) {
                 document.getElementById('meme-result').innerHTML = response.data.meme_html;
-                document.getElementById('try-again-button').style.display = 'block'; // Show try again button
+                document.getElementById('try-again-button').style.display = 'block';
                 if (response.data.meme_id) {
-                    excludedMemes.push(response.data.meme_id); // Add generated meme ID to the exclusion list
+                    excludedMemes.push(response.data.meme_id);
                 }
             })
             .catch(function (error) {
@@ -132,7 +72,7 @@
 
         // Try Again Function
         function tryAgain() {
-            generateMeme(); // Call generateMeme again with the updated exclusion list
+            generateMeme();
         }
 
         // Load Previous Memes Function
@@ -161,7 +101,6 @@
 
         // Load previous memes on page load
         loadPreviousMemes();
-
     </script>
 </body>
 </html>

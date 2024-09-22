@@ -8,6 +8,8 @@ import openai
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type  # Updated import
 import os
 import logging
+import threading
+from cachetools import TTLCache
 
 # 2. Configuration and Setup
 app = Flask(__name__)
@@ -35,20 +37,30 @@ OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 # Initialize OpenAI client
 openai.api_key = OPENAI_API_KEY
 
+# Initialize the IP location cache and lock
+ip_location_cache = TTLCache(maxsize=1000, ttl=3600)  # Cache up to 1000 IPs for 1 hour
+cache_lock = threading.Lock()  # Use a lock if needed
+
 # 3. Helper Functions
 
 @retry(
-    stop=stop_after_attempt(5),  # Stop after 5 attempts
-    wait=wait_exponential(min=1, max=30),  # Exponential backoff starting at 1 second, up to 30 seconds
-    retry=retry_if_exception_type(requests.exceptions.RequestException),  # Retry on any requests exception
-    reraise=True  # Reraise the last exception after retries are exhausted
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(min=1, max=30),
+    retry=retry_if_exception_type(requests.exceptions.RequestException),
+    reraise=True
 )
 def fetch_location_data(ip_address):
     """
     Fetches the location data using an IP address with exponential backoff.
     """
+    # Check if IP address is in cache
+    with cache_lock:
+        if ip_address in ip_location_cache:
+            logger.debug(f"Retrieved location data for IP {ip_address} from cache.")
+            return ip_location_cache[ip_address]
+    
     try:
-        # Use ipapi to get location data (Replace with another API if needed)
+        # Use ipapi to get location data
         location_response = requests.get(f'https://ipapi.co/{ip_address}/json/')
         location_response.raise_for_status()
         location_data = location_response.json()
@@ -60,14 +72,19 @@ def fetch_location_data(ip_address):
             'country': location_data.get('country_name', 'Unknown Country')
         }
         
+        # Store the location data in the cache
+        with cache_lock:
+            ip_location_cache[ip_address] = user_location
+            logger.debug(f"Stored location data for IP {ip_address} in cache.")
+        
         return user_location
 
     except requests.exceptions.HTTPError as http_err:
         logger.error(f"HTTP error occurred: {http_err}")
-        raise  # Reraise the exception for tenacity to handle
+        raise
     except requests.exceptions.RequestException as req_err:
         logger.error(f"Request error occurred: {req_err}")
-        raise  # Reraise the exception for tenacity to handle
+        raise
 
 def call_openai_api(data):
     headers = {
@@ -81,6 +98,7 @@ def call_openai_api(data):
     except Exception as err:
         print(f"An error occurred: {err}")
         return None
+
 
 def get_client_ip():
     if request.headers.getlist("X-Forwarded-For"):
@@ -117,7 +135,7 @@ def collect_user_ip_and_location():
 
         # Save location data in session and cookie
         session['user_location'] = user_location
-        resp = make_response(jsonify({"message": "Location data saved"}))  # Creating a valid response object
+        resp = make_response(jsonify({"message": "Location data saved"}))
         resp.set_cookie('user_location', json.dumps(user_location), max_age=3600)
         
         return user_location  # Return the user location, not the response
@@ -130,6 +148,7 @@ def collect_user_ip_and_location():
             'region': 'Unknown Region',
             'country': 'Unknown Country'
         }
+
 
 def upsert_location(location_label, city, region, country):
     try:
