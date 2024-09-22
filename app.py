@@ -103,7 +103,7 @@ def upsert_location(location_label, city, region, country):
             logger.debug(f"Location '{location_label}' created successfully.")
     except Exception as e:
         logger.error(f"Error upserting location: {str(e)}")
-        
+
 def get_meme_list():
     try:
         response = requests.get("https://api.imgflip.com/get_memes")
@@ -256,14 +256,30 @@ def regenerate_meme(thought, location, excluded_memes):
 
 def get_memes_from_firebase(city=None, region=None, country=None):
     try:
-        query = db.collection('memes').order_by('timestamp', direction=firestore.Query.DESCENDING).limit(20)
+        memes = []
         
-        # Apply filters based on city, region, and country
-        if city and region and country:
-            query = query.where('city', '==', city).where('region', '==', region).where('country', '==', country)
+        # Attempt to fetch memes filtered by city
+        if city:
+            memes = db.collection('memes').where('city', '==', city).order_by('timestamp', direction=firestore.Query.DESCENDING).limit(20).get()
+            memes = [[meme.to_dict()['meme_url'], f"{meme.to_dict()['thought']} (Location: {meme.to_dict().get('location', '')})"] for meme in memes]
         
-        memes = query.get()
-        return [[meme.to_dict()['meme_url'], f"{meme.to_dict()['thought']} (Location: {meme.to_dict().get('location', '')})"] for meme in memes]
+        # If no memes found at city level, try region level
+        if not memes and region:
+            memes = db.collection('memes').where('region', '==', region).order_by('timestamp', direction=firestore.Query.DESCENDING).limit(20).get()
+            memes = [[meme.to_dict()['meme_url'], f"{meme.to_dict()['thought']} (Location: {meme.to_dict().get('location', '')})"] for meme in memes]
+        
+        # If no memes found at region level, try country level
+        if not memes and country:
+            memes = db.collection('memes').where('country', '==', country).order_by('timestamp', direction=firestore.Query.DESCENDING).limit(20).get()
+            memes = [[meme.to_dict()['meme_url'], f"{meme.to_dict()['thought']} (Location: {meme.to_dict().get('location', '')})"] for meme in memes]
+        
+        # If still no memes found, get all memes
+        if not memes:
+            memes = db.collection('memes').order_by('timestamp', direction=firestore.Query.DESCENDING).limit(20).get()
+            memes = [[meme.to_dict()['meme_url'], f"{meme.to_dict()['thought']} (Location: {meme.to_dict().get('location', '')})"] for meme in memes]
+        
+        return memes
+
     except Exception as e:
         logger.error(f"Error fetching memes from Firebase: {str(e)}")
         return []
@@ -379,33 +395,21 @@ def create_meme_route():
 def get_previous_memes():
     try:
         logger.debug("Fetching previous memes")
+        
+        # Collect user data for filtering
         user_data = collect_user_ip_and_location()
         city = user_data['city']
         region = user_data['region']  # Extract region/state information
         country = user_data['country']  # Extract country information
+        
+        # Fetch memes with fallback logic
         meme_gallery = get_memes_from_firebase(city, region, country)
+        
         return jsonify(meme_gallery)
     except Exception as e:
         logger.error(f"Error in get_previous_memes: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/test_location_save', methods=['GET'])
-def test_location_save():
-    try:
-        db.collection('memes').add({
-            'thought': 'Test Thought',
-            'location': 'Test Location',
-            'city': 'San Francisco',
-            'region': 'California',
-            'country': 'USA',
-            'meme_url': 'https://example.com/test.jpg',
-            'ip_address': '127.0.0.1',
-            'timestamp': firestore.SERVER_TIMESTAMP
-        })
-        return "Test location saved successfully", 200
-    except Exception as e:
-        logger.error(f"Error in test_location_save: {str(e)}")
-        return jsonify({'error': str(e)}), 500
 
 # 5. App Execution
 if __name__ == '__main__':

@@ -77,12 +77,15 @@
         function loadPreviousMemes() {
             axios.get('/get_previous_memes')
             .then(function (response) {
-                var memeGallery = response.data;
-                var html = '';
+                var memeGallery = response.data.memes;
+                var level = response.data.level;
+                var html = `<p>Showing memes at the ${level} level</p>`;
+                
                 for (var i = 0; i < memeGallery.length; i++) {
                     html += `<img src="${memeGallery[i][0]}" alt="Meme" style="max-width: 100%;">`;
                     html += `<p>${memeGallery[i][1]}</p>`;
                 }
+                
                 document.getElementById('previous-memes').innerHTML = html;
             })
             .catch(function (error) {
