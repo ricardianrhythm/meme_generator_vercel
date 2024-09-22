@@ -37,7 +37,13 @@ openai.api_key = OPENAI_API_KEY
 
 # 3. Helper Functions
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(min=2, max=10))
+@retry(
+    stop=stop_after_attempt(5),  # Stop after 5 attempts
+    wait=wait_exponential(min=1, max=30),  # Exponential backoff starting at 1 second, up to 30 seconds
+    retry=retry_if_exception_type(requests.exceptions.RequestException),  # Retry on any requests exception
+    reraise=True  # Reraise the last exception after retries are exhausted
+)
+
 def call_openai_api(data):
     headers = {
         'Content-Type': 'application/json',
@@ -51,11 +57,47 @@ def call_openai_api(data):
         print(f"An error occurred: {err}")
         return None
 
+def fetch_location_data(ip_address):
+    """
+    Fetches the location data using an IP address with exponential backoff.
+    """
+    try:
+        # Use ipapi to get location data (Replace with another API if needed)
+        location_response = requests.get(f'https://ipapi.co/{ip_address}/json/')
+        location_response.raise_for_status()
+        location_data = location_response.json()
+        
+        user_location = {
+            'ip': ip_address,
+            'city': location_data.get('city', 'Unknown City'),
+            'region': location_data.get('region', 'Unknown Region'),
+            'country': location_data.get('country_name', 'Unknown Country')
+        }
+        
+        return user_location
+
+    except requests.exceptions.HTTPError as http_err:
+        logger.error(f"HTTP error occurred: {http_err}")
+        raise  # Reraise the exception for tenacity to handle
+    except requests.exceptions.RequestException as req_err:
+        logger.error(f"Request error occurred: {req_err}")
+        raise  # Reraise the exception for tenacity to handle
+
+
 def collect_user_ip_and_location():
-    # Check if location data is stored in cookies
+    # Check if location data is already stored in the session
+    if 'user_location' in session:
+        logger.debug("Using cached location from session.")
+        return session['user_location']
+    
+    # If not in session, check if location data is stored in cookies
     location_data = request.cookies.get('user_location')
     if location_data:
-        return json.loads(location_data)
+        user_location = json.loads(location_data)
+        # Save to session to avoid future cookie checks
+        session['user_location'] = user_location
+        logger.debug("Using cached location from cookies.")
+        return user_location
 
     try:
         # Make a request to the ipify API to get the public IP address
@@ -64,26 +106,20 @@ def collect_user_ip_and_location():
         ip_address = response.json().get('ip')
         
         # Log the IP address
-        print(f"User IP Address: {ip_address}")
-        
-        # Use ipapi to get location data
-        location_response = requests.get(f'https://ipapi.co/{ip_address}/json/')
-        location_response.raise_for_status()
-        location_data = location_response.json()
+        logger.debug(f"User IP Address: {ip_address}")
 
-        user_location = {
-            'ip': ip_address,
-            'city': location_data.get('city', 'Unknown City'),
-            'region': location_data.get('region', 'Unknown Region'),
-            'country': location_data.get('country_name', 'Unknown Country')
-        }
-        
-        # Save location data in session
+        # Fetch location data with backoff strategy
+        user_location = fetch_location_data(ip_address)
+
+        # Save location data in session and cookie
         session['user_location'] = user_location
+        resp = make_response()
+        resp.set_cookie('user_location', json.dumps(user_location), max_age=3600)
         
         return user_location
+
     except Exception as e:
-        print(f"Error fetching IP or location data: {str(e)}")
+        logger.error(f"Error fetching IP or location data: {str(e)}")
         return {
             'ip': 'Unknown IP',
             'city': 'Unknown City',
