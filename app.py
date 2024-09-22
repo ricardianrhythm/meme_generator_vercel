@@ -82,6 +82,14 @@ def call_openai_api(data):
         print(f"An error occurred: {err}")
         return None
 
+def get_client_ip():
+    if request.headers.getlist("X-Forwarded-For"):
+        # 'X-Forwarded-For' may contain multiple IPs, take the first one
+        ip = request.headers.getlist("X-Forwarded-For")[0].split(',')[0]
+    else:
+        ip = request.remote_addr
+    return ip
+
 def collect_user_ip_and_location():
     # Check if location data is already stored in the session
     if 'user_location' in session:
@@ -98,10 +106,8 @@ def collect_user_ip_and_location():
         return user_location
 
     try:
-        # Make a request to the ipify API to get the public IP address
-        response = requests.get('https://api.ipify.org?format=json')
-        response.raise_for_status()
-        ip_address = response.json().get('ip')
+        # Get the client's IP address
+        ip_address = get_client_ip()
         
         # Log the IP address
         logger.debug(f"User IP Address: {ip_address}")
@@ -374,54 +380,6 @@ def get_locations_from_firebase(city, region, country):
         logger.error(f"Error fetching locations from Firebase: {str(e)}")
         return ["Other (specify below)"]
 
-def create_meme(location, thought, excluded_memes=[]):
-    if not thought.strip():
-        return "Please enter your thought.", None, get_memes_from_firebase()
-
-    used_thought = thought.strip()
-    used_label = location.strip()
-
-    if not used_label:
-        return "Please enter a location.", None, get_memes_from_firebase()
-    
-    # Generate the meme and store in Firebase
-    meme_url, meme_id, doc_id, error = generate_meme(used_thought, used_label, excluded_memes=excluded_memes)
-    if error:
-        return error, None, get_memes_from_firebase()
-
-    # Store meme details with IP address, city, state/region, and country
-    user_data = collect_user_ip_and_location()
-    ip_address = user_data['ip']
-    city = user_data['city']
-    region = user_data['region']  # Collect region/state information
-    country = user_data['country']  # Collect country information
-
-    logger.debug(f"Saving meme with user data: {user_data}")
-
-    try:
-        db.collection('memes').add({
-            'thought': used_thought,
-            'location': used_label,
-            'city': city,
-            'region': region,  # Store region/state information
-            'country': country,  # Store country information
-            'meme_url': meme_url,
-            'ip_address': ip_address,
-            'timestamp': firestore.SERVER_TIMESTAMP
-        })
-        logger.debug(f"Meme saved successfully: {meme_url}")
-    except Exception as e:
-        logger.error(f"Error storing meme in Firebase: {str(e)}")
-
-    meme_html = f"""
-    <div style='text-align: center;'>
-        <img src='{meme_url}' alt='Meme' style='max-width: 100%; height: auto;'/>
-        <p style='font-size: 1.2em; font-weight: bold;'>{used_thought}</p>
-        <p style='font-size: 1em;'>Location: {used_label}</p>
-    </div>
-    """
-    return "Meme generated successfully.", meme_html, get_memes_from_firebase()
-
 # 4. Route Definitions
 @app.route('/')
 def index():
@@ -444,47 +402,66 @@ def index():
     return render_template('index.html', locations=locations)
 
 @app.route('/generate_meme', methods=['POST'])
-def create_meme_route():
+def generate_meme_route():
     try:
         data = request.json
-        location = data.get('location')
-        thought = data.get('thought')
-        # Initialize excluded_memes as an empty list if not provided in the request data
-        excluded_memes = data.get('excluded_memes', [])  
-        
-        logger.debug(f"Generating meme with location: {location}, thought: {thought}, excluded memes: {excluded_memes}")
-        
-        # Call the create_meme function
-        status, meme_html, _ = create_meme(location, thought, excluded_memes=excluded_memes)
-        
+        location = data.get('location', '').strip()
+        thought = data.get('thought', '').strip()
+        excluded_memes = data.get('excluded_memes', [])
+
+        if not thought or not location:
+            return jsonify({'status': 'Please enter both a location and a thought.', 'meme_html': None})
+
+        meme_url, meme_id, doc_id, error = generate_meme(thought, location, excluded_memes=excluded_memes)
+        if error:
+            return jsonify({'status': error, 'meme_html': None})
+
+        meme_html = f"""
+        <div style='text-align: center;'>
+            <img src='{meme_url}' alt='Meme' style='max-width: 100%; height: auto;'/>
+            <p style='font-size: 1.2em; font-weight: bold;'>{thought}</p>
+            <p style='font-size: 1em;'>Location: {location}</p>
+        </div>
+        """
+
         return jsonify({
-            'status': status,
+            'status': 'Meme generated successfully.',
             'meme_html': meme_html,
-            'meme_id': _  # Return the generated meme ID so it can be added to the exclusion list
+            'meme_id': meme_id
         })
     except Exception as e:
-        logger.error(f"Error in create_meme_route: {str(e)}")
+        logger.error(f"Error in generate_meme_route: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/get_previous_memes')
-def get_previous_memes():
+def get_previous_memes_route():
     try:
         logger.debug("Fetching previous memes")
         
         # Collect user data for filtering
         user_data = collect_user_ip_and_location()
         city = user_data['city']
-        region = user_data['region']  # Extract region/state information
-        country = user_data['country']  # Extract country information
+        region = user_data['region']
+        country = user_data['country']
+        logger.debug(f"User location data: {user_data}")
         
         # Fetch memes with fallback logic
-        meme_gallery = get_memes_from_firebase(city, region, country)
+        meme_gallery = get_memes_from_firebase(city=city)
+        level = 'city'
+        if not meme_gallery:
+            meme_gallery = get_memes_from_firebase(region=region)
+            level = 'region'
+        if not meme_gallery:
+            meme_gallery = get_memes_from_firebase(country=country)
+            level = 'country'
+        if not meme_gallery:
+            meme_gallery = get_memes_from_firebase()
+            level = 'global'
         
-        return jsonify(meme_gallery)
+        return jsonify({'memes': meme_gallery, 'level': level})
     except Exception as e:
         logger.error(f"Error in get_previous_memes: {str(e)}")
         return jsonify({'error': str(e)}), 500
-
 
 # 5. App Execution
 if __name__ == '__main__':

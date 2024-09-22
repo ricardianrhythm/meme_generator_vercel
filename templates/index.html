@@ -137,23 +137,19 @@
 
         // Load Previous Memes Function
         async function loadPreviousMemes() {
-            // Fetch location data from localStorage if available
-            const locationData = getLocationData();
-            console.log('Using Cached Location Data for Previous Memes:', locationData);
-
-            axios.get('/get_previous_memes', {
-                params: {
-                    user_location_data: locationData // Pass cached location data as query params if needed
-                }
-            })
+            axios.get('/get_previous_memes')
             .then(function (response) {
                 var memeGallery = response.data.memes;
                 var level = response.data.level;
                 var html = `<p>Showing memes at the ${level} level</p>`;
                 
                 for (var i = 0; i < memeGallery.length; i++) {
-                    html += `<img src="${memeGallery[i][0]}" alt="Meme" style="max-width: 100%;">`;
-                    html += `<p>${memeGallery[i][1]}</p>`;
+                    var meme = memeGallery[i];
+                    html += `<div style="margin-bottom: 20px;">`;
+                    html += `<img src="${meme.meme_url}" alt="Meme" style="max-width: 100%;">`;
+                    html += `<p><strong>Thought:</strong> ${meme.thought}</p>`;
+                    html += `<p><strong>Location:</strong> ${meme.location}</p>`;
+                    html += `</div>`;
                 }
                 
                 document.getElementById('previous-memes').innerHTML = html;
