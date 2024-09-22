@@ -34,12 +34,12 @@
 
         document.getElementById('location-select').addEventListener('change', function() {
             var customLocation = document.getElementById('custom-location');
-            customLocation.style.display = this.value === 'Other' ? 'block' : 'none';
+            customLocation.style.display = this.value === 'Other (specify below)' ? 'block' : 'none';
         });
 
         function generateMeme() {
             let location = document.getElementById('location-select').value;
-            if (location === 'Other') {
+            if (location === 'Other (specify below)') {
                 location = document.getElementById('custom-location').value.trim(); // Use custom location if selected
             }
             let thought = document.getElementById('thought').value.trim(); // Trim to remove extra spaces

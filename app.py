@@ -62,8 +62,8 @@ def collect_user_ip_and_location():
         return {
             'ip': ip_address,
             'city': location_data.get('city', 'Unknown City'),
-            'region': location_data.get('region', 'Unknown Region'),
-            'country': location_data.get('country_name', 'Unknown Country')
+            'region': location_data.get('region', 'Unknown Region'),  # Collect region/state
+            'country': location_data.get('country_name', 'Unknown Country')  # Collect country
         }
     except Exception as e:
         logger.error(f"Error fetching IP or location data: {str(e)}")
@@ -216,11 +216,13 @@ def regenerate_meme(thought, location, excluded_memes):
     """
     return "Meme regenerated successfully.", meme_html, get_memes_from_firebase(), meme_id
 
-def get_memes_from_firebase(ip_address=None):
+def get_memes_from_firebase(city=None, region=None, country=None):
     try:
         query = db.collection('memes').order_by('timestamp', direction=firestore.Query.DESCENDING).limit(20)
-        if ip_address:
-            query = query.where('ip_address', '==', ip_address)
+        
+        # Apply filters based on city, region, and country
+        if city and region and country:
+            query = query.where('city', '==', city).where('region', '==', region).where('country', '==', country)
         
         memes = query.get()
         return [[meme.to_dict()['meme_url'], f"{meme.to_dict()['thought']} (Location: {meme.to_dict().get('location', '')})"] for meme in memes]
@@ -262,15 +264,22 @@ def create_meme(location, thought, excluded_memes=[]):
     if error:
         return error, None, get_memes_from_firebase()
 
-    # Store meme details with IP address
+    # Store meme details with IP address, city, state/region, and country
     user_data = collect_user_ip_and_location()
     ip_address = user_data['ip']
+    city = user_data['city']
+    region = user_data['region']  # Collect region/state information
+    country = user_data['country']  # Collect country information
+    
     try:
         db.collection('memes').add({
             'thought': used_thought,
             'location': used_label,
+            'city': city,
+            'region': region,  # Store region/state information
+            'country': country,  # Store country information
             'meme_url': meme_url,
-            'ip_address': ip_address,  # Save the user's IP address
+            'ip_address': ip_address,
             'timestamp': firestore.SERVER_TIMESTAMP
         })
     except Exception as e:
@@ -328,8 +337,10 @@ def get_previous_memes():
     try:
         logger.debug("Fetching previous memes")
         user_data = collect_user_ip_and_location()
-        ip_address = user_data['ip']
-        meme_gallery = get_memes_from_firebase(ip_address)
+        city = user_data['city']
+        region = user_data['region']  # Extract region/state information
+        country = user_data['country']  # Extract country information
+        meme_gallery = get_memes_from_firebase(city, region, country)
         return jsonify(meme_gallery)
     except Exception as e:
         logger.error(f"Error in get_previous_memes: {str(e)}")
