@@ -256,28 +256,26 @@ def regenerate_meme(thought, location, excluded_memes):
 
 def get_memes_from_firebase(city=None, region=None, country=None):
     try:
-        memes = []
-        
-        # Attempt to fetch memes filtered by city
+        # Fetch all memes first
+        all_memes = db.collection('memes').order_by('timestamp', direction=firestore.Query.DESCENDING).limit(100).get()
+        memes = [[meme.to_dict()['meme_url'], f"{meme.to_dict()['thought']} (Location: {meme.to_dict().get('location', '')})"] for meme in all_memes]
+
+        # Apply filtering in Python if needed
         if city:
-            memes = db.collection('memes').where('city', '==', city).order_by('timestamp', direction=firestore.Query.DESCENDING).limit(20).get()
-            memes = [[meme.to_dict()['meme_url'], f"{meme.to_dict()['thought']} (Location: {meme.to_dict().get('location', '')})"] for meme in memes]
-        
-        # If no memes found at city level, try region level
-        if not memes and region:
-            memes = db.collection('memes').where('region', '==', region).order_by('timestamp', direction=firestore.Query.DESCENDING).limit(20).get()
-            memes = [[meme.to_dict()['meme_url'], f"{meme.to_dict()['thought']} (Location: {meme.to_dict().get('location', '')})"] for meme in memes]
-        
-        # If no memes found at region level, try country level
-        if not memes and country:
-            memes = db.collection('memes').where('country', '==', country).order_by('timestamp', direction=firestore.Query.DESCENDING).limit(20).get()
-            memes = [[meme.to_dict()['meme_url'], f"{meme.to_dict()['thought']} (Location: {meme.to_dict().get('location', '')})"] for meme in memes]
-        
-        # If still no memes found, get all memes
-        if not memes:
-            memes = db.collection('memes').order_by('timestamp', direction=firestore.Query.DESCENDING).limit(20).get()
-            memes = [[meme.to_dict()['meme_url'], f"{meme.to_dict()['thought']} (Location: {meme.to_dict().get('location', '')})"] for meme in memes]
-        
+            filtered_memes = [meme for meme in memes if meme.get('city') == city]
+            if filtered_memes:
+                return filtered_memes
+
+        if region:
+            filtered_memes = [meme for meme in memes if meme.get('region') == region]
+            if filtered_memes:
+                return filtered_memes
+
+        if country:
+            filtered_memes = [meme for meme in memes if meme.get('country') == country]
+            if filtered_memes:
+                return filtered_memes
+
         return memes
 
     except Exception as e:
