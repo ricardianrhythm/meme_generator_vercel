@@ -43,20 +43,6 @@ openai.api_key = OPENAI_API_KEY
     retry=retry_if_exception_type(requests.exceptions.RequestException),  # Retry on any requests exception
     reraise=True  # Reraise the last exception after retries are exhausted
 )
-
-def call_openai_api(data):
-    headers = {
-        'Content-Type': 'application/json',
-        'Authorization': f'Bearer {openai.api_key}'
-    }
-    try:
-        response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=data)
-        response.raise_for_status()
-        return response.json()
-    except Exception as err:
-        print(f"An error occurred: {err}")
-        return None
-
 def fetch_location_data(ip_address):
     """
     Fetches the location data using an IP address with exponential backoff.
@@ -83,6 +69,18 @@ def fetch_location_data(ip_address):
         logger.error(f"Request error occurred: {req_err}")
         raise  # Reraise the exception for tenacity to handle
 
+def call_openai_api(data):
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {openai.api_key}'
+    }
+    try:
+        response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=data)
+        response.raise_for_status()
+        return response.json()
+    except Exception as err:
+        print(f"An error occurred: {err}")
+        return None
 
 def collect_user_ip_and_location():
     # Check if location data is already stored in the session
@@ -113,10 +111,10 @@ def collect_user_ip_and_location():
 
         # Save location data in session and cookie
         session['user_location'] = user_location
-        resp = make_response()
+        resp = make_response(jsonify({"message": "Location data saved"}))  # Creating a valid response object
         resp.set_cookie('user_location', json.dumps(user_location), max_age=3600)
         
-        return user_location
+        return user_location  # Return the user location, not the response
 
     except Exception as e:
         logger.error(f"Error fetching IP or location data: {str(e)}")
@@ -320,26 +318,43 @@ def get_memes_from_firebase(city=None, region=None, country=None):
                  for meme in all_memes]
         
         # Apply filtering in Python if needed
+        filtered_memes = []
         if city:
             filtered_memes = [meme for meme in memes if meme.get('city') == city]
-            if filtered_memes:
-                return filtered_memes
-
-        if region:
+        
+        if not filtered_memes and region:
             filtered_memes = [meme for meme in memes if meme.get('region') == region]
-            if filtered_memes:
-                return filtered_memes
-
-        if country:
+        
+        if not filtered_memes and country:
             filtered_memes = [meme for meme in memes if meme.get('country') == country]
-            if filtered_memes:
-                return filtered_memes
+        
+        # Fallback to all memes if no specific memes found for filters
+        if not filtered_memes:
+            filtered_memes = memes
 
-        return memes
+        return filtered_memes
 
     except Exception as e:
         logger.error(f"Error fetching memes from Firebase: {str(e)}")
         return []
+
+def get_previous_memes():
+    try:
+        logger.debug("Fetching previous memes")
+        
+        # Collect user data for filtering
+        user_data = collect_user_ip_and_location()
+        city = user_data['city']
+        region = user_data['region']  # Extract region/state information
+        country = user_data['country']  # Extract country information
+        
+        # Fetch memes with fallback logic
+        meme_gallery = get_memes_from_firebase(city, region, country)
+        
+        return jsonify({'memes': meme_gallery, 'level': 'city/region/country based on found data'})
+    except Exception as e:
+        logger.error(f"Error in get_previous_memes: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 def get_locations_from_firebase(city, region, country):
     try:
