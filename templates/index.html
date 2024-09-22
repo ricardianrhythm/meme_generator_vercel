@@ -24,7 +24,6 @@
     
     <div id="meme-result"></div>
     
-    <!-- New button for trying again -->
     <button id="try-again-button" onclick="tryAgain()" style="display:none;">Try Again, Different Meme</button>
     
     <h2>Previous Memes</h2>
@@ -33,12 +32,68 @@
     <script>
         let excludedMemes = [];
 
+        // Function to get location data from localStorage if it exists
+        function getLocationData() {
+            // Check if location data is already stored in localStorage
+            const locationData = localStorage.getItem('locationData');
+            if (locationData) {
+                return JSON.parse(locationData);
+            }
+            return null;
+        }
+
+        // Function to save location data in localStorage
+        function saveLocationData(data) {
+            localStorage.setItem('locationData', JSON.stringify(data));
+        }
+
+        // Function to fetch location data from ipapi.co or another API
+        async function fetchLocationData() {
+            try {
+                const response = await axios.get('https://ipapi.co/json/');  // Replace with your IP API endpoint if needed
+                const data = {
+                    ip: response.data.ip,
+                    city: response.data.city,
+                    region: response.data.region,
+                    country: response.data.country_name
+                };
+                saveLocationData(data);  // Save location data to localStorage
+                return data;
+            } catch (error) {
+                console.error('Error fetching location data:', error);
+                return {
+                    ip: 'Unknown IP',
+                    city: 'Unknown City',
+                    region: 'Unknown Region',
+                    country: 'Unknown Country'
+                };
+            }
+        }
+
+        // Function to initialize location data
+        async function initializeLocationData() {
+            let locationData = getLocationData();  // Check if data is already in localStorage
+            if (!locationData) {
+                locationData = await fetchLocationData();  // Fetch data if not in localStorage
+            }
+            console.log('Location Data:', locationData);
+            return locationData;
+        }
+
+        // Call initializeLocationData on page load
+        window.onload = async function() {
+            const locationData = await initializeLocationData();
+            // You can use locationData here or save it to a global variable if needed
+        };
+
+        // Event listener for location select dropdown
         document.getElementById('location-select').addEventListener('change', function() {
             var customLocation = document.getElementById('custom-location');
             customLocation.style.display = this.value === 'Other (specify below)' ? 'block' : 'none';
         });
 
-        function generateMeme() {
+        // Generate Meme Function
+        async function generateMeme() {
             let location = document.getElementById('location-select').value;
             if (location === 'Other (specify below)') {
                 location = document.getElementById('custom-location').value.trim(); // Use custom location if selected
@@ -51,11 +106,16 @@
                 return;
             }
 
+            // Fetch location data from localStorage if available
+            const locationData = getLocationData();
+            console.log('Using Cached Location Data:', locationData);
+
             // Make API request to generate meme
             axios.post('/generate_meme', {
                 location: location,
                 thought: thought,
-                excluded_memes: excludedMemes // Pass excluded memes
+                excluded_memes: excludedMemes, // Pass excluded memes
+                user_location_data: locationData // Pass cached location data to the server if needed
             })
             .then(function (response) {
                 document.getElementById('meme-result').innerHTML = response.data.meme_html;
@@ -70,12 +130,22 @@
             });
         }
 
+        // Try Again Function
         function tryAgain() {
             generateMeme(); // Call generateMeme again with the updated exclusion list
         }
 
-        function loadPreviousMemes() {
-            axios.get('/get_previous_memes')
+        // Load Previous Memes Function
+        async function loadPreviousMemes() {
+            // Fetch location data from localStorage if available
+            const locationData = getLocationData();
+            console.log('Using Cached Location Data for Previous Memes:', locationData);
+
+            axios.get('/get_previous_memes', {
+                params: {
+                    user_location_data: locationData // Pass cached location data as query params if needed
+                }
+            })
             .then(function (response) {
                 var memeGallery = response.data.memes;
                 var level = response.data.level;
@@ -93,7 +163,9 @@
             });
         }
 
+        // Load previous memes on page load
         loadPreviousMemes();
+
     </script>
 </body>
 </html>

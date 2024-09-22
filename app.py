@@ -1,5 +1,5 @@
 # 1. Import Statements
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, session, make_response
 import firebase_admin
 from firebase_admin import credentials, firestore
 import json
@@ -11,6 +11,10 @@ import logging
 
 # 2. Configuration and Setup
 app = Flask(__name__)
+
+# Enable session management
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'your_secret_key')  # Replace 'your_secret_key' with an actual key for production
+
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
@@ -48,6 +52,11 @@ def call_openai_api(data):
         return None
 
 def collect_user_ip_and_location():
+    # Check if location data is stored in cookies
+    location_data = request.cookies.get('user_location')
+    if location_data:
+        return json.loads(location_data)
+
     try:
         # Make a request to the ipify API to get the public IP address
         response = requests.get('https://api.ipify.org?format=json')
@@ -55,27 +64,33 @@ def collect_user_ip_and_location():
         ip_address = response.json().get('ip')
         
         # Log the IP address
-        print(f"User IP Address: {ip_address}")  # This will log to Vercel logs
+        print(f"User IP Address: {ip_address}")
         
         # Use ipapi to get location data
         location_response = requests.get(f'https://ipapi.co/{ip_address}/json/')
         location_response.raise_for_status()
         location_data = location_response.json()
 
-        return {
+        user_location = {
             'ip': ip_address,
             'city': location_data.get('city', 'Unknown City'),
-            'region': location_data.get('region', 'Unknown Region'),  # Collect region/state
-            'country': location_data.get('country_name', 'Unknown Country')  # Collect country
+            'region': location_data.get('region', 'Unknown Region'),
+            'country': location_data.get('country_name', 'Unknown Country')
         }
+        
+        # Save location data in session
+        session['user_location'] = user_location
+        
+        return user_location
     except Exception as e:
-        print(f"Error fetching IP or location data: {str(e)}")  # Log any errors
+        print(f"Error fetching IP or location data: {str(e)}")
         return {
             'ip': 'Unknown IP',
             'city': 'Unknown City',
             'region': 'Unknown Region',
             'country': 'Unknown Country'
         }
+
 def upsert_location(location_label, city, region, country):
     try:
         # Check if the location document already exists
@@ -112,7 +127,7 @@ def get_meme_list():
         memes = data['data']['memes']
         return [{'name': meme['name'], 'id': meme['id'], 'box_count': meme['box_count']} for meme in memes[:100]]
     except requests.RequestException as e:
-        st.error(f"Error fetching meme list: {e}")
+        logger.error(f"Error fetching meme list: {e}")
         return []
 
 def generate_meme(thought, location_label, meme_id=None, previous_doc_id=None, excluded_memes=None):
@@ -228,16 +243,16 @@ def generate_meme(thought, location_label, meme_id=None, previous_doc_id=None, e
                 return meme_url, meme_id, doc_ref.id, None
             except Exception as e:
                 error_msg = f"Error storing meme in Firebase: {str(e)}"
-                st.error(error_msg)
+                logger.error(error_msg)
                 return None, None, None, error_msg
         else:
             error_msg = f"Failed to generate meme. {result.get('error_message', '')}"
-            st.error(error_msg)
+            logger.error(error_msg)
             return None, None, None, error_msg
 
     except Exception as e:
         error_msg = f"Error in generate_meme: {str(e)}"
-        st.error(error_msg)
+        logger.error(error_msg)
         return None, None, None, error_msg
 
 def regenerate_meme(thought, location, excluded_memes):
