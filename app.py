@@ -48,11 +48,10 @@ def call_openai_api(data):
         return None
 
 def collect_user_ip():
+    try:
         return request.remote_addr
     except:
         return "Unknown IP"
-
-
 
 def get_meme_list():
     try:
