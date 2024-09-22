@@ -1,3 +1,4 @@
+# 1. Import Statements
 from flask import Flask, request, jsonify, render_template
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -6,15 +7,21 @@ import requests
 import openai
 from tenacity import retry, stop_after_attempt, wait_exponential
 import os
+import logging
 
+# 2. Configuration and Setup
 app = Flask(__name__)
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
-# Initialize Firebase
-if not firebase_admin._apps:
-    cred = credentials.Certificate(json.loads(os.environ.get('FIREBASE_CREDENTIALS')))
-    firebase_admin.initialize_app(cred)
+# Firebase Initialization
+def initialize_firebase():
+    if not firebase_admin._apps:
+        cred = credentials.Certificate(json.loads(os.environ.get('FIREBASE_CREDENTIALS')))
+        firebase_admin.initialize_app(cred)
+    return firestore.client()
 
-db = firestore.client()
+db = initialize_firebase()
 
 # Set up API keys
 IMGFLIP_USERNAME = os.environ.get('IMGFLIP_USERNAME')
@@ -23,6 +30,8 @@ OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 
 # Initialize OpenAI client
 openai.api_key = OPENAI_API_KEY
+
+# 3. Helper Functions
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=2, max=10))
 def call_openai_api(data):
@@ -39,31 +48,11 @@ def call_openai_api(data):
         return None
 
 def collect_user_ip():
-    return request.remote_addr
-
-def collect_user_ip():
-    try:
-        # Try Streamlit's experimental function
-        user_ip = st.experimental_get_query_params().get('streamlit_ip', ['unknown'])[0]
-        if user_ip != 'unknown':
-            return user_ip
-
-        # Check common proxy headers
-        headers_to_check = [
-            'HTTP_X_FORWARDED_FOR',
-            'HTTP_X_REAL_IP',
-            'REMOTE_ADDR'
-        ]
-        for header in headers_to_check:
-            ip = st._get_browser_address_bar_data().get(header)
-            if ip:
-                return ip.split(',')[0].strip()
-
-        # If all else fails, use the server's IP (which will be consistent for your app)
-        response = requests.get('https://api.ipify.org?format=json')
-        return response.json()['ip']
+        return request.remote_addr
     except:
         return "Unknown IP"
+
+
 
 def get_meme_list():
     try:
@@ -296,119 +285,51 @@ def create_meme(location, thought):
     """
     return "Meme generated successfully.", meme_html, get_memes_from_firebase()
 
-def main():
-    try:
-        logger.debug("Starting main function")
-        
-        st.title("Big Red Button Meme Generator")
-        
-        logger.debug("Fetching locations from Firebase")
-        location_labels = get_locations_from_firebase()
-        logger.debug(f"Fetched locations: {location_labels}")
-        
-        # Ensure "Other (specify below)" is always the last option
-        if "Other (specify below)" in location_labels:
-            location_labels.remove("Other (specify below)")
-        location_labels.append("Other (specify below)")
-        
-        # Use a unique key for the selectbox
-        selected_location = st.selectbox(
-            "Select Location", 
-            location_labels,
-            key='location_selectbox'
-        )
-        
-        logger.debug(f"Selected location: {selected_location}")
-
-        # Only show the custom location input if "Other (specify below)" is selected
-        if selected_location == "Other (specify below)":
-            custom_location = st.text_input("Enter custom location")
-            logger.debug(f"Custom location entered: {custom_location}")
-        else:
-            custom_location = ""
-
-        thought = st.text_input("Enter your thought")
-        logger.debug(f"Thought entered: {thought}")
-        
-        # Initialize session state variables
-        if 'meme_generated' not in st.session_state:
-            st.session_state.meme_generated = False
-        if 'excluded_memes' not in st.session_state:
-            st.session_state.excluded_memes = []
-        if 'current_meme_id' not in st.session_state:
-            st.session_state.current_meme_id = None
-
-        if st.button("Generate Meme"):
-            logger.debug("Generate Meme button clicked")
-            # Use custom_location if "Other (specify below)" is selected, otherwise use selected_location
-            location = custom_location if selected_location == "Other (specify below)" else selected_location
-            logger.debug(f"Location for meme generation: {location}")
-            
-            # Use create_meme function to handle new location saving and meme generation
-            status, meme_html, meme_gallery = create_meme(location, thought)
-            
-            if "successfully" in status:
-                st.session_state.meme_generated = True
-                st.session_state.current_meme_html = meme_html
-                st.session_state.current_status = status
-                st.session_state.current_location = location
-            else:
-                st.write(status)
-
-        if st.session_state.meme_generated:
-            st.write(st.session_state.current_status)
-            if st.session_state.current_meme_html:
-                st.markdown(st.session_state.current_meme_html, unsafe_allow_html=True)
-            
-            if st.button("Try again, different meme"):
-                logger.debug("Try again button clicked")
-                st.session_state.excluded_memes.append(st.session_state.current_meme_id)
-                status, meme_html, meme_gallery = create_meme(st.session_state.current_location, thought)
-                
-                if "successfully" in status:
-                    st.session_state.current_meme_html = meme_html
-                    st.session_state.current_status = "New meme generated successfully."
-                    st.rerun()
-                else:
-                    st.write(status)
-
-        logger.debug("Fetching previous memes")
-        st.subheader("Previous Memes")
-        meme_gallery = get_memes_from_firebase()
-        for meme_url, caption in meme_gallery:
-            st.image(meme_url, caption=caption, use_column_width=True)
-        
-        logger.debug("Main function completed successfully")
-
-    except Exception as e:
-        logger.error(f"An error occurred in the main function: {str(e)}")
-        st.error(f"An error occurred: {str(e)}")
-
-if __name__ == "__main__":
-    main()
-    
+# 4. Route Definitions
 @app.route('/')
 def index():
+    logger.debug("Rendering main page")
+
+    # Fetch locations from Firebase
     locations = get_locations_from_firebase()
+    return render_template('index.html', locations=locations)
+
+    # Ensure "Other (specify below)" is always the last option
+    if "Other (specify below)" in locations:
+        locations.remove("Other (specify below)")
+    locations.append("Other (specify below)")
+    
     return render_template('index.html', locations=locations)
 
 @app.route('/generate_meme', methods=['POST'])
 def create_meme_route():
-    data = request.json
-    location = data.get('location')
-    thought = data.get('thought')
-    
-    status, meme_html, _ = create_meme(location, thought)
-    
-    return jsonify({
-        'status': status,
-        'meme_html': meme_html
-    })
+    try:
+        data = request.json
+        location = data.get('location')
+        thought = data.get('thought')
+        logger.debug(f"Generating meme with location: {location}, thought: {thought}")
+        
+        # Call the create_meme function
+        status, meme_html, _ = create_meme(location, thought)
+        
+        return jsonify({
+            'status': status,
+            'meme_html': meme_html
+        })
+    except Exception as e:
+        logger.error(f"Error in create_meme_route: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/get_previous_memes')
 def get_previous_memes():
-    meme_gallery = get_memes_from_firebase()
-    return jsonify(meme_gallery)
+    try:
+        logger.debug("Fetching previous memes")
+        meme_gallery = get_memes_from_firebase()
+        return jsonify(meme_gallery)
+    except Exception as e:
+        logger.error(f"Error in get_previous_memes: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
+# 5. App Execution
 if __name__ == '__main__':
     app.run(debug=True)
