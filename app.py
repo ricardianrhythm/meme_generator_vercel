@@ -322,6 +322,9 @@ def create_meme_route():
         data = request.json
         location = data.get('location')
         thought = data.get('thought')
+        # Initialize excluded_memes as an empty list if not provided in the request data
+        excluded_memes = data.get('excluded_memes', [])  
+        
         logger.debug(f"Generating meme with location: {location}, thought: {thought}, excluded memes: {excluded_memes}")
         
         # Call the create_meme function
@@ -330,7 +333,7 @@ def create_meme_route():
         return jsonify({
             'status': status,
             'meme_html': meme_html,
-            'meme_id': _ # Return the generated meme ID so it can be added to the exclusion list
+            'meme_id': _  # Return the generated meme ID so it can be added to the exclusion list
         })
     except Exception as e:
         logger.error(f"Error in create_meme_route: {str(e)}")
