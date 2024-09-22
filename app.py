@@ -270,6 +270,9 @@ def generate_meme(thought, location_label, meme_id=None, previous_doc_id=None, e
                     'thought': thought,
                     'location': location_label,
                     'location_id': location_id,
+                    'city': city,  # Adding city information
+                    'region': region,  # Adding region information
+                    'country': country,  # Adding country information
                     'meme_url': meme_url,
                     'explanation': meme_dict.get('explanation', ''),
                     'timestamp': firestore.SERVER_TIMESTAMP
