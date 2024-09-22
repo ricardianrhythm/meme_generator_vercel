@@ -73,7 +73,7 @@ def collect_user_ip_and_location():
             'region': 'Unknown Region',
             'country': 'Unknown Country'
         }
-        
+
 def get_meme_list():
     try:
         response = requests.get("https://api.imgflip.com/get_memes")
@@ -239,6 +239,7 @@ def get_locations_from_firebase(city, region, country):
                location.to_dict().get('region') == region or
                location.to_dict().get('country') == country
         ]
+        logger.debug(f"Fetched locations for city: {city}, region: {region}, country: {country}: {location_labels}")
         return location_labels
     except Exception as e:
         logger.error(f"Error fetching locations from Firebase: {str(e)}")
@@ -310,8 +311,11 @@ def index():
     if "Other (specify below)" in locations:
         locations.remove("Other (specify below)")
     locations.append("Other (specify below)")
+
+    logger.debug(f"Locations passed to template: {locations}")
     
     return render_template('index.html', locations=locations)
+
 @app.route('/generate_meme', methods=['POST'])
 def create_meme_route():
     try:

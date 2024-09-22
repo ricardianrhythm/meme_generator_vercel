@@ -9,13 +9,14 @@
 <body>
     <h1>Big Red Button Meme Generator</h1>
     
-    <select id="location-select">
-        {% for location in locations %}
-        <option value="{{ location }}">{{ location }}</option>
-        {% endfor %}
-    </select>
-    
-    <input type="text" id="custom-location" placeholder="Enter custom location" style="display:none;">
+<select id="location-select">
+    <option value="" disabled selected>Select Location</option> <!-- Add a default option -->
+    {% for location in locations %}
+    <option value="{{ location }}">{{ location }}</option>
+    {% endfor %}
+</select>
+
+<input type="text" id="custom-location" placeholder="Enter custom location" style="display:none;">
     
     <input type="text" id="thought" placeholder="Enter your thought">
     
