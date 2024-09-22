@@ -1,7 +1,0 @@
-flask
-firebase-admin
-requests
-openai
-tenacity
-gunicorn
-python-3.9
