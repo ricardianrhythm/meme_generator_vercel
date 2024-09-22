@@ -5,7 +5,7 @@ from firebase_admin import credentials, firestore
 import json
 import requests
 import openai
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type  # Updated import
 import os
 import logging
 
