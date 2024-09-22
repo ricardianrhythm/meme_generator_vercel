@@ -8,27 +8,23 @@
 </head>
 <body>
     <h1>Big Red Button Meme Generator</h1>
-    
-<select id="location-select">
-    <option value="" disabled selected>Select Location</option> <!-- Add a default option -->
-    {% for location in locations %}
-    <option value="{{ location }}">{{ location }}</option>
-    {% endfor %}
-</select>
+    <p>Welcome to the Big Red Button Meme Generator! This tool allows you to create memes based on different locations and your own thoughts. Select a predefined location from the dropdown menu or specify your own, then enter a thought. The more detailed your thought, the more personalized your meme will be!</p>
 
-<input type="text" id="custom-location" placeholder="Enter custom location" style="display:none;">
-    
+    <select id="location-select">
+        <option value="" disabled selected>Select Location</option>
+        <!-- Add options dynamically or hardcode them here -->
+        <option value="Other (specify below)">Other (specify below)</option>
+    </select>
+
+    <input type="text" id="custom-location" placeholder="Enter custom location" style="display:none;">
     <input type="text" id="thought" placeholder="Enter your thought">
-    
     <button onclick="generateMeme()">Generate Meme</button>
     
     <div id="meme-result"></div>
-    
-    <button id="try-again-button" onclick="tryAgain()" style="display:none;">Try Again, Different Meme</button>
+    <button id="try-again-button" onclick="tryAgain()" style="display:none;">Try Different Meme</button>
     
     <h2>Previous Memes</h2>
     <div id="previous-memes"></div>
-
     <script>
         let excludedMemes = [];
 
