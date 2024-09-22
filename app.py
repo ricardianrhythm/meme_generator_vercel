@@ -258,8 +258,16 @@ def get_memes_from_firebase(city=None, region=None, country=None):
     try:
         # Fetch all memes first
         all_memes = db.collection('memes').order_by('timestamp', direction=firestore.Query.DESCENDING).limit(100).get()
-        memes = [[meme.to_dict()['meme_url'], f"{meme.to_dict()['thought']} (Location: {meme.to_dict().get('location', '')})"] for meme in all_memes]
-
+        
+        # Return a list of dictionaries for easier processing
+        memes = [{'meme_url': meme.to_dict()['meme_url'], 
+                  'thought': meme.to_dict()['thought'], 
+                  'location': meme.to_dict().get('location', ''),
+                  'city': meme.to_dict().get('city', ''),
+                  'region': meme.to_dict().get('region', ''),
+                  'country': meme.to_dict().get('country', '')} 
+                 for meme in all_memes]
+        
         # Apply filtering in Python if needed
         if city:
             filtered_memes = [meme for meme in memes if meme.get('city') == city]
