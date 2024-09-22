@@ -47,16 +47,31 @@ def call_openai_api(data):
         print(f"An error occurred: {err}")
         return None
 
-def collect_user_ip():
+def collect_user_ip_and_location():
     try:
         # Make a request to the ipify API to get the public IP address
         response = requests.get('https://api.ipify.org?format=json')
-        response.raise_for_status()  # Raise an error if the request was unsuccessful
+        response.raise_for_status()
         ip_address = response.json().get('ip')
-        return ip_address if ip_address else "Unknown IP"
+        
+        # Use ipapi to get location data
+        location_response = requests.get(f'https://ipapi.co/{ip_address}/json/')
+        location_response.raise_for_status()
+        location_data = location_response.json()
+
+        return {
+            'ip': ip_address,
+            'city': location_data.get('city', 'Unknown City'),
+            'region': location_data.get('region', 'Unknown Region'),
+            'country': location_data.get('country_name', 'Unknown Country')
+        }
     except Exception as e:
-        logger.error(f"Error fetching IP address: {str(e)}")
-        return "Unknown IP"
+        logger.error(f"Error fetching IP or location data: {str(e)}")
+        return {
+            'ip': 'Unknown IP',
+            'city': 'Unknown City',
+            'region': 'Unknown Region',
+            'country': 'Unknown Country'
 
 def get_meme_list():
     try:
@@ -72,9 +87,10 @@ def get_meme_list():
 def generate_meme(thought, location_label, meme_id=None, previous_doc_id=None, excluded_memes=None):
     try:
         meme_list = get_meme_list()
+        
+        # Filter out excluded memes
         if excluded_memes:
             meme_list = [meme for meme in meme_list if meme['id'] not in excluded_memes]
-        
         if not meme_list:
             return None, None, None, "Error: No more memes available"
             
@@ -199,24 +215,33 @@ def regenerate_meme(thought, location, excluded_memes):
     """
     return "Meme regenerated successfully.", meme_html, get_memes_from_firebase(), meme_id
 
-def get_memes_from_firebase():
+def get_memes_from_firebase(ip_address=None):
     try:
-        memes = db.collection('memes').order_by('timestamp', direction=firestore.Query.DESCENDING).limit(20).get()
+        query = db.collection('memes').order_by('timestamp', direction=firestore.Query.DESCENDING).limit(20)
+        if ip_address:
+            query = query.where('ip_address', '==', ip_address)
+        
+        memes = query.get()
         return [[meme.to_dict()['meme_url'], f"{meme.to_dict()['thought']} (Location: {meme.to_dict().get('location', '')})"] for meme in memes]
     except Exception as e:
-        st.error(f"Error fetching memes from Firebase: {str(e)}")
+        logger.error(f"Error fetching memes from Firebase: {str(e)}")
         return []
 
-def get_locations_from_firebase():
+def get_locations_from_firebase(city, region, country):
     try:
-        locations = db.collection('locations').order_by('label').get()
-        location_labels = [location.to_dict().get('label', 'Unknown Location') for location in locations]
+        locations = db.collection('locations').get()
+        location_labels = [
+            location.to_dict().get('label', 'Unknown Location') for location in locations
+            if location.to_dict().get('city') == city or
+               location.to_dict().get('region') == region or
+               location.to_dict().get('country') == country
+        ]
         return location_labels
     except Exception as e:
-        st.error(f"Error fetching locations from Firebase: {str(e)}")
+        logger.error(f"Error fetching locations from Firebase: {str(e)}")
         return ["Other (specify below)"]
 
-def create_meme(location, thought):
+def create_meme(location, thought, excluded_memes=[]):
     if not thought.strip():
         return "Please enter your thought.", None, get_memes_from_firebase()
 
@@ -232,21 +257,23 @@ def create_meme(location, thought):
         return "Meme already exists.", None, get_memes_from_firebase()
     
     # Generate the meme and store in Firebase
-    meme_url, meme_id, doc_id, error = generate_meme(used_thought, used_label)
+    meme_url, meme_id, doc_id, error = generate_meme(used_thought, used_label, excluded_memes=excluded_memes)
     if error:
         return error, None, get_memes_from_firebase()
 
     # Store meme details with IP address
+    user_data = collect_user_ip_and_location()
+    ip_address = user_data['ip']
     try:
         db.collection('memes').add({
             'thought': used_thought,
             'location': used_label,
             'meme_url': meme_url,
-            'ip_address': collect_user_ip(),
+            'ip_address': ip_address,  # Save the user's IP address
             'timestamp': firestore.SERVER_TIMESTAMP
         })
     except Exception as e:
-        st.error(f"Error storing meme in Firebase: {str(e)}")
+        logger.error(f"Error storing meme in Firebase: {str(e)}")
 
     meme_html = f"""
     <div style='text-align: center;'>
@@ -261,30 +288,35 @@ def create_meme(location, thought):
 @app.route('/')
 def index():
     logger.debug("Rendering main page")
+    
+    user_data = collect_user_ip_and_location()
+    user_city = user_data.get('city')
+    user_region = user_data.get('region')
+    user_country = user_data.get('country')
 
-    # Fetch locations from Firebase
-    locations = get_locations_from_firebase()
-  
+    # Fetch locations from Firebase and filter them based on user's location
+    locations = get_locations_from_firebase(user_city, user_region, user_country)
+    
     if "Other (specify below)" in locations:
         locations.remove("Other (specify below)")
     locations.append("Other (specify below)")
     
     return render_template('index.html', locations=locations)
-
 @app.route('/generate_meme', methods=['POST'])
 def create_meme_route():
     try:
         data = request.json
         location = data.get('location')
         thought = data.get('thought')
-        logger.debug(f"Generating meme with location: {location}, thought: {thought}")
+        logger.debug(f"Generating meme with location: {location}, thought: {thought}, excluded memes: {excluded_memes}")
         
         # Call the create_meme function
-        status, meme_html, _ = create_meme(location, thought)
+        status, meme_html, _ = create_meme(location, thought, excluded_memes=excluded_memes)
         
         return jsonify({
             'status': status,
-            'meme_html': meme_html
+            'meme_html': meme_html,
+            'meme_id': _ # Return the generated meme ID so it can be added to the exclusion list
         })
     except Exception as e:
         logger.error(f"Error in create_meme_route: {str(e)}")
@@ -294,7 +326,9 @@ def create_meme_route():
 def get_previous_memes():
     try:
         logger.debug("Fetching previous memes")
-        meme_gallery = get_memes_from_firebase()
+        user_data = collect_user_ip_and_location()
+        ip_address = user_data['ip']
+        meme_gallery = get_memes_from_firebase(ip_address)
         return jsonify(meme_gallery)
     except Exception as e:
         logger.error(f"Error in get_previous_memes: {str(e)}")

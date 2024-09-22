@@ -13,7 +13,6 @@
         {% for location in locations %}
         <option value="{{ location }}">{{ location }}</option>
         {% endfor %}
-        <option value="Other">Other (specify below)</option>
     </select>
     
     <input type="text" id="custom-location" placeholder="Enter custom location" style="display:none;">
@@ -24,10 +23,15 @@
     
     <div id="meme-result"></div>
     
+    <!-- New button for trying again -->
+    <button id="try-again-button" onclick="tryAgain()" style="display:none;">Try Again, Different Meme</button>
+    
     <h2>Previous Memes</h2>
     <div id="previous-memes"></div>
 
     <script>
+        let excludedMemes = [];
+
         document.getElementById('location-select').addEventListener('change', function() {
             var customLocation = document.getElementById('custom-location');
             customLocation.style.display = this.value === 'Other' ? 'block' : 'none';
@@ -49,15 +53,24 @@
             // Make API request to generate meme
             axios.post('/generate_meme', {
                 location: location,
-                thought: thought
+                thought: thought,
+                excluded_memes: excludedMemes // Pass excluded memes
             })
             .then(function (response) {
                 document.getElementById('meme-result').innerHTML = response.data.meme_html;
+                document.getElementById('try-again-button').style.display = 'block'; // Show try again button
+                if (response.data.meme_id) {
+                    excludedMemes.push(response.data.meme_id); // Add generated meme ID to the exclusion list
+                }
             })
             .catch(function (error) {
                 console.error('Error:', error);
                 alert("Error generating meme. Please try again.");
             });
+        }
+
+        function tryAgain() {
+            generateMeme(); // Call generateMeme again with the updated exclusion list
         }
 
         function loadPreviousMemes() {
