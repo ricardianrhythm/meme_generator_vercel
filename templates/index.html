@@ -5,6 +5,44 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Big Red Button Meme Generator</title>
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        /* Tab buttons */
+        #location-memes-tab, #all-memes-tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            background-color: #f0f0f0;
+            border: none;
+            margin-right: 5px;
+        }
+
+        #location-memes-tab:hover:not(:disabled), #all-memes-tab:hover:not(:disabled) {
+            background-color: #e0e0e0;
+        }
+
+        /* Active tab button */
+        #location-memes-tab:disabled, #all-memes-tab:disabled {
+            background-color: #ccc;
+            cursor: default;
+        }
+
+        /* Tab content */
+        #location-memes, #all-memes {
+            border: 1px solid #ccc;
+            padding: 10px;
+        }
+
+        /* Meme container */
+        .meme-container {
+            margin-bottom: 20px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 20px;
+        }
+
+        .meme-container img {
+            max-width: 100%;
+            height: auto;
+        }
+    </style>
 </head>
 <body>
     <h1>Big Red Button Meme Generator</h1>
@@ -24,7 +62,16 @@
     <button id="try-again-button" onclick="tryAgain()" style="display:none;">Try Different Meme</button>
     
     <h2>Previous Memes</h2>
-    <div id="previous-memes"></div>
+    <div>
+        <button id="location-memes-tab" onclick="showTab('location')" disabled>Location Memes</button>
+        <button id="all-memes-tab" onclick="showTab('all')">All Past Memes</button>
+    </div>
+    <div id="location-memes" style="display: block;">
+        <!-- Location memes will be loaded here -->
+    </div>
+    <div id="all-memes" style="display: none;">
+        <!-- All memes will be loaded here -->
+    </div>
     <script>
         let excludedMemes = [];
 
@@ -32,13 +79,28 @@
         document.getElementById('location-select').addEventListener('change', function() {
             var customLocation = document.getElementById('custom-location');
             customLocation.style.display = this.value === 'Other (specify below)' ? 'block' : 'none';
+            if (this.value !== 'Other (specify below)') {
+                // Load memes for the selected predefined location
+                loadLocationMemes(this.value);
+            }
         });
+
+        function showTab(tabName) {
+            document.getElementById('location-memes').style.display = tabName === 'location' ? 'block' : 'none';
+            document.getElementById('all-memes').style.display = tabName === 'all' ? 'block' : 'none';
+            document.getElementById('location-memes-tab').disabled = tabName === 'location';
+            document.getElementById('all-memes-tab').disabled = tabName === 'all';
+        }
 
         // Generate Meme Function
         async function generateMeme() {
             let location = document.getElementById('location-select').value;
             if (location === 'Other (specify below)') {
                 location = document.getElementById('custom-location').value.trim();
+                if (!location) {
+                    alert("Please enter a custom location.");
+                    return;
+                }
             }
             let thought = document.getElementById('thought').value.trim();
 
@@ -59,10 +121,12 @@
                 if (response.data.meme_id) {
                     excludedMemes.push(response.data.meme_id);
                 }
+                // Load location memes
+                loadLocationMemes(location);
             })
             .catch(function (error) {
                 console.error('Error:', error);
-                alert("Error generating meme. Please try again.");
+                alert("Error generating meme: " + (error.response.data.message || "Please try again."));
             });
         }
 
@@ -71,32 +135,75 @@
             generateMeme();
         }
 
-        // Load Previous Memes Function
-        async function loadPreviousMemes() {
+        async function loadLocationMemes(location) {
+            if (!location) return;
+            // Enable the 'Location Memes' tab
+            document.getElementById('location-memes-tab').disabled = false;
+            axios.get('/get_previous_memes', {
+                params: {
+                    location: location
+                }
+            })
+            .then(function (response) {
+                var memeGallery = response.data.memes;
+                var html = '';
+                
+                if (memeGallery.length === 0) {
+                    html = `<p>No memes found for "${location}". Be the first to create one!</p>`;
+                } else {
+                    for (var i = 0; i < memeGallery.length; i++) {
+                        var meme = memeGallery[i];
+                        html += `<div class="meme-container">`;
+                        html += `<img src="${meme.meme_url}" alt="Meme">`;
+                        html += `<p><strong>Thought:</strong> ${meme.thought}</p>`;
+                        html += `<p><strong>Location:</strong> ${meme.location}</p>`;
+                        html += `</div>`;
+                    }
+                }
+                
+                document.getElementById('location-memes').innerHTML = html;
+                // Switch to 'Location Memes' tab
+                showTab('location');
+            })
+            .catch(function (error) {
+                console.error('Error:', error);
+                alert("Error loading location memes: " + (error.response.data.message || "Please try again."));
+            });
+        }
+
+        async function loadAllMemes() {
             axios.get('/get_previous_memes')
             .then(function (response) {
                 var memeGallery = response.data.memes;
-                var level = response.data.level;
-                var html = `<p>Showing memes at the ${level} level</p>`;
+                var html = '';
                 
                 for (var i = 0; i < memeGallery.length; i++) {
                     var meme = memeGallery[i];
-                    html += `<div style="margin-bottom: 20px;">`;
-                    html += `<img src="${meme.meme_url}" alt="Meme" style="max-width: 100%;">`;
+                    html += `<div class="meme-container">`;
+                    html += `<img src="${meme.meme_url}" alt="Meme">`;
                     html += `<p><strong>Thought:</strong> ${meme.thought}</p>`;
                     html += `<p><strong>Location:</strong> ${meme.location}</p>`;
                     html += `</div>`;
                 }
                 
-                document.getElementById('previous-memes').innerHTML = html;
+                document.getElementById('all-memes').innerHTML = html;
             })
             .catch(function (error) {
                 console.error('Error:', error);
+                alert("Error loading all memes: " + (error.response.data.message || "Please try again."));
             });
         }
 
-        // Load previous memes on page load
-        loadPreviousMemes();
+        // Event listener for custom location input
+        document.getElementById('custom-location').addEventListener('blur', function() {
+            var location = this.value.trim();
+            if (location) {
+                loadLocationMemes(location);
+            }
+        });
+
+        // Load all memes on page load
+        loadAllMemes();
     </script>
 </body>
 </html>
