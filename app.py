@@ -384,16 +384,37 @@ def get_previous_memes():
         logger.error(f"Error in get_previous_memes: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-def get_locations_from_firebase(city, region, country):
+def get_locations_from_firebase(city=None, region=None, country=None):
     try:
-        locations = db.collection('locations').get()
-        location_labels = [
-            location.to_dict().get('label', 'Unknown Location') for location in locations
-            if location.to_dict().get('city') == city or
-               location.to_dict().get('region') == region or
-               location.to_dict().get('country') == country
-        ]
-        logger.debug(f"Fetched locations for city: {city}, region: {region}, country: {country}: {location_labels}")
+        location_labels = []
+        
+        # Attempt to fetch locations matching the city
+        if city:
+            locations = db.collection('locations').where('city', '==', city).get()
+            location_labels = [location.to_dict().get('label', 'Unknown Location') for location in locations]
+            if location_labels:
+                logger.debug(f"Locations found for city {city}: {location_labels}")
+        
+        # If no locations found for city, try region
+        if not location_labels and region:
+            locations = db.collection('locations').where('region', '==', region).get()
+            location_labels = [location.to_dict().get('label', 'Unknown Location') for location in locations]
+            if location_labels:
+                logger.debug(f"Locations found for region {region}: {location_labels}")
+        
+        # If no locations found for region, try country
+        if not location_labels and country:
+            locations = db.collection('locations').where('country', '==', country).get()
+            location_labels = [location.to_dict().get('label', 'Unknown Location') for location in locations]
+            if location_labels:
+                logger.debug(f"Locations found for country {country}: {location_labels}")
+        
+        # If still no locations found, fetch all locations
+        if not location_labels:
+            locations = db.collection('locations').get()
+            location_labels = [location.to_dict().get('label', 'Unknown Location') for location in locations]
+            logger.debug(f"No locations found for user's location. Fetched all locations: {location_labels}")
+
         return location_labels
     except Exception as e:
         logger.error(f"Error fetching locations from Firebase: {str(e)}")
