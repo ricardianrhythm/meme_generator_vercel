@@ -254,11 +254,6 @@ def create_meme(location, thought, excluded_memes=[]):
 
     if not used_label:
         return "Please enter a location.", None, get_memes_from_firebase()
-
-    # Check if the meme already exists
-    existing_memes = db.collection('memes').where('thought', '==', used_thought).where('location', '==', used_label).get()
-    if existing_memes:
-        return "Meme already exists.", None, get_memes_from_firebase()
     
     # Generate the meme and store in Firebase
     meme_url, meme_id, doc_id, error = generate_meme(used_thought, used_label, excluded_memes=excluded_memes)
@@ -271,7 +266,9 @@ def create_meme(location, thought, excluded_memes=[]):
     city = user_data['city']
     region = user_data['region']  # Collect region/state information
     country = user_data['country']  # Collect country information
-    
+
+    logger.debug(f"Saving meme with user data: {user_data}")
+
     try:
         db.collection('memes').add({
             'thought': used_thought,
@@ -283,6 +280,7 @@ def create_meme(location, thought, excluded_memes=[]):
             'ip_address': ip_address,
             'timestamp': firestore.SERVER_TIMESTAMP
         })
+        logger.debug(f"Meme saved successfully: {meme_url}")
     except Exception as e:
         logger.error(f"Error storing meme in Firebase: {str(e)}")
 
@@ -351,6 +349,24 @@ def get_previous_memes():
         return jsonify(meme_gallery)
     except Exception as e:
         logger.error(f"Error in get_previous_memes: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/test_location_save', methods=['GET'])
+def test_location_save():
+    try:
+        db.collection('memes').add({
+            'thought': 'Test Thought',
+            'location': 'Test Location',
+            'city': 'San Francisco',
+            'region': 'California',
+            'country': 'USA',
+            'meme_url': 'https://example.com/test.jpg',
+            'ip_address': '127.0.0.1',
+            'timestamp': firestore.SERVER_TIMESTAMP
+        })
+        return "Test location saved successfully", 200
+    except Exception as e:
+        logger.error(f"Error in test_location_save: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 # 5. App Execution
