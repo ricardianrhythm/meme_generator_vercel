@@ -54,6 +54,9 @@ def collect_user_ip_and_location():
         response.raise_for_status()
         ip_address = response.json().get('ip')
         
+        # Log the IP address
+        print(f"User IP Address: {ip_address}")  # This will log to Vercel logs
+        
         # Use ipapi to get location data
         location_response = requests.get(f'https://ipapi.co/{ip_address}/json/')
         location_response.raise_for_status()
@@ -66,14 +69,13 @@ def collect_user_ip_and_location():
             'country': location_data.get('country_name', 'Unknown Country')  # Collect country
         }
     except Exception as e:
-        logger.error(f"Error fetching IP or location data: {str(e)}")
+        print(f"Error fetching IP or location data: {str(e)}")  # Log any errors
         return {
             'ip': 'Unknown IP',
             'city': 'Unknown City',
             'region': 'Unknown Region',
             'country': 'Unknown Country'
         }
-
 def get_meme_list():
     try:
         response = requests.get("https://api.imgflip.com/get_memes")
